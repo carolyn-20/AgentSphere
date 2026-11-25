@@ -1,0 +1,176 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  BUILDER
+  OPERATOR
+  AUDITOR
+}
+
+enum ExecutionStatus {
+  QUEUED
+  RUNNING
+  WAITING_APPROVAL
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+model Tenant {
+  id String @id @default(cuid())
+  name String
+  plan String @default("FREE")
+  monthlyTokenLimit Int @default(100000)
+  createdAt DateTime @default(now())
+  members Membership[]
+  agents Agent[]
+  tools Tool[]
+  documents Document[]
+  executions Execution[]
+  auditEvents AuditEvent[]
+}
+model User {
+  id String @id @default(cuid())
+  email String @unique
+  passwordHash String
+  createdAt DateTime @default(now())
+  memberships Membership[]
+}
+model Membership {
+  id String @id @default(cuid())
+  userId String
+  tenantId String
+  role Role
+  user User @relation(fields:[userId], references:[id], onDelete:Cascade)
+  tenant Tenant @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+  @@unique([userId,tenantId])
+  @@index([tenantId,role])
+}
+model Agent {
+  id String @id @default(cuid())
+  tenantId String
+  name String
+  description String @default("")
+  systemPrompt String @default("You are a helpful assistant.")
+  active Boolean @default(true)
+  maxSteps Int @default(5)
+  createdAt DateTime @default(now())
+  tenant Tenant @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+  prompts PromptVersion[]
+  executions Execution[]
+  @@index([tenantId,createdAt])
+}
+model PromptVersion {
+  id String @id @default(cuid())
+  agentId String
+  version Int
+  content String
+  active Boolean @default(false)
+  createdAt DateTime @default(now())
+  agent Agent @relation(fields:[agentId], references:[id], onDelete:Cascade)
+  @@unique([agentId,version])
+}
+model Tool {
+  id String @id @default(cuid())
+  tenantId String
+  name String
+  description String
+  enabled Boolean @default(false)
+  configCiphertext String?
+  tenant Tenant @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+  @@unique([tenantId,name])
+}
+model Document {
+  id String @id @default(cuid())
+  tenantId String
+  filename String
+  status String @default("PENDING")
+  contentHash String?
+  createdAt DateTime @default(now())
+  tenant Tenant @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+  chunks Chunk[]
+  @@index([tenantId,status])
+}
+model Chunk {
+  id String @id @default(cuid())
+  documentId String
+  ordinal Int
+  content String
+  metadata Json?
+  document Document @relation(fields:[documentId], references:[id], onDelete:Cascade)
+  @@unique([documentId,ordinal])
+}
+model Execution {
+  id String @id @default(cuid())
+  tenantId String
+  agentId String
+  status ExecutionStatus @default(QUEUED)
+  input Json
+  output Json?
+  errorCode String?
+  steps Int @default(0)
+  tokens Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tenant Tenant @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+  agent Agent @relation(fields:[agentId], references:[id], onDelete:Cascade)
+  approvals Approval[]
+  @@index([tenantId,createdAt])
+}
+model Approval {
+  id String @id @default(cuid())
+  executionId String
+  status String @default("PENDING")
+  requestedAction String
+  decidedBy String?
+  createdAt DateTime @default(now())
+  execution Execution @relation(fields:[executionId], references:[id], onDelete:Cascade)
+}
+model UsageRecord {
+  id String @id @default(cuid())
+  tenantId String
+  executionId String?
+  tokens Int
+  estimatedCost Decimal @default(0)
+  createdAt DateTime @default(now())
+  @@index([tenantId,createdAt])
+}
+model AuditEvent {
+  id String @id @default(cuid())
+  tenantId String
+  actorId String?
+  action String
+  resourceType String
+  resourceId String?
+  metadata Json?
+  createdAt DateTime @default(now())
+  tenant Tenant @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+  @@index([tenantId,createdAt])
+}
+
+model Workflow {
+  id String @id @default(cuid())
+  tenantId String
+  name String
+  description String @default("")
+  enabled Boolean @default(false)
+  version Int @default(1)
+  steps WorkflowStep[]
+  createdAt DateTime @default(now())
+  @@index([tenantId,createdAt])
+}
+model WorkflowStep {
+  id String @id @default(cuid())
+  workflowId String
+  position Int
+  kind String
+  config Json
+  workflow Workflow @relation(fields:[workflowId], references:[id], onDelete:Cascade)
+  @@unique([workflowId,position])
+}
