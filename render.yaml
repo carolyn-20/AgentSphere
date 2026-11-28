@@ -1,0 +1,60 @@
+services:
+  - type: web
+    name: agentsphere-api
+    runtime: docker
+    plan: starter
+    dockerContext: ./services/api
+    dockerfilePath: ./services/api/Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_PORT
+        value: 10000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: agentsphere-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: agentsphere-redis
+          type: keyvalue
+          property: connectionString
+      - key: PROCESSOR_URL
+        value: https://agentsphere-processor.onrender.com
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: ENCRYPTION_KEY
+        generateValue: true
+
+  - type: web
+    name: agentsphere-processor
+    runtime: docker
+    plan: starter
+    dockerContext: ./services/processor
+    dockerfilePath: ./services/processor/Dockerfile
+    healthCheckPath: /health
+    dockerCommand: uvicorn app.main:app --host 0.0.0.0 --port 10000
+
+  - type: web
+    name: agentsphere-web
+    runtime: docker
+    plan: starter
+    dockerContext: ./apps/web
+    dockerfilePath: ./apps/web/Dockerfile
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        value: https://agentsphere-api.onrender.com
+
+  - type: keyvalue
+    name: agentsphere-redis
+    plan: starter
+    maxmemoryPolicy: noeviction
+
+databases:
+  - name: agentsphere-db
+    plan: basic-256mb
+    databaseName: agentsphere
+    user: agentsphere
